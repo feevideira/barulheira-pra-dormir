@@ -1,0 +1,42 @@
+# ── Dependências ─────────────────────────────────────────────────────────────
+node_modules/
+.npm/
+
+# ── Segredos e variáveis de ambiente ─────────────────────────────────────────
+# NUNCA commitar esses arquivos — contêm URLs privadas e credenciais
+.env
+.env.local
+.env.production
+*.env
+
+# ── Áudio ─────────────────────────────────────────────────────────────────────
+# Os MP3s ficam no Cloudflare R2, não no GitHub (arquivos grandes)
+*.mp3
+*.wav
+*.ogg
+sons/
+
+# ── Build e empacotamento Lambda ──────────────────────────────────────────────
+*.zip
+dist/
+build/
+
+# ── macOS ─────────────────────────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# ── Editores ──────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── Logs ─────────────────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ── AWS SAM / CDK (caso use no futuro) ───────────────────────────────────────
+.aws-sam/
+cdk.out/
+samconfig.toml
