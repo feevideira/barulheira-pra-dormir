@@ -1,59 +1,44 @@
 /**
- * Barulheira pra Dormir — v1.0 "MVP de 7 Sons"
- * Primeira versão funcional. 7 sons baixados de repositórios CC0,
- * sem slot de voz, sem persistência de estado.
+ * Barulheira pra Dormir — v1.1 "Som Único"
+ * Decisão estratégica: simplificar o MVP para um único som (ruído rosa
+ * rebatizado como "Nave do Buda") e validar o loop antes de expandir.
+ * Introduz DynamoDB para salvar estado entre sessões.
+ * Projeto renomeado de "Jarra de Sonhos" → "Barulheira pra Dormir".
  *
- * Stack: ASK SDK v2 · AWS Lambda · Cloudflare R2
+ * BUG CONHECIDO (corrigido na v2.0): arquivo no R2 estava salvo com
+ * extensão dupla (.mp3.mp3). A URL abaixo reflete o estado real do bucket
+ * na época — não alterar para fins históricos.
+ *
+ * Stack: ASK SDK v2 · AWS Lambda · Cloudflare R2 · DynamoDB
  * Data: julho/2026
  */
 
 const Alexa = require('ask-sdk-core');
+const { DynamoDbPersistenceAdapter } = require('ask-sdk-dynamodb-persistence-adapter');
 
-// ─── Configuração ────────────────────────────────────────────────────────────
-const R2_BASE = 'https://pub-5cacb16476b34033a5f44bc8a202286b.r2.dev';
+// ─── Configuração ─────────────────────────────────────────────────────────────
+// BUG: extensão dupla (.mp3.mp3) — arquivo foi salvo assim no R2
+const AUDIO_URL = 'https://pub-5cacb16476b34033a5f44bc8a202286b.r2.dev/pink_noise.mp3.mp3';
+const SOUND_TOKEN = 'nave-do-buda';
+const SOUND_LABEL = 'Nave do Buda';
 
-const SOUNDS = {
-  chuva:       { file: 'rain.mp3',        label: 'chuva'          },
-  ruido_branco:{ file: 'white_noise.mp3', label: 'ruído branco'   },
-  ruido_rosa:  { file: 'pink_noise.mp3',  label: 'ruído rosa'     },
-  ventilador:  { file: 'fan.mp3',         label: 'ventilador'     },
-  ondas:       { file: 'ocean_waves.mp3', label: 'ondas do mar'   },
-  lareira:     { file: 'fireplace.mp3',   label: 'lareira'        },
-  nave:        { file: 'spaceship.mp3',   label: 'nave espacial'  },
-};
+const persistenceAdapter = new DynamoDbPersistenceAdapter({
+  tableName: 'barulheira-pra-dormir-estado',
+  createTable: true,
+});
 
-const DEFAULT_SOUND = 'nave';
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-function audioUrl(file) {
-  return `${R2_BASE}/${file}`;
-}
-
-function playDirective(soundKey, offsetMs = 0) {
-  const sound = SOUNDS[soundKey];
-  return {
-    type: 'AudioPlayer.Play',
-    playBehavior: 'REPLACE_ALL',
-    audioItem: {
-      stream: {
-        token: soundKey,
-        url: audioUrl(sound.file),
-        offsetInMilliseconds: offsetMs,
-      },
-    },
-  };
-}
-
-// ─── Handlers ─────────────────────────────────────────────────────────────────
+// ─── Handlers ────────────────────────────────────────────────────────────────
 const LaunchRequestHandler = {
   canHandle(handlerInput) {
     return Alexa.getRequestType(handlerInput.requestEnvelope) === 'LaunchRequest';
   },
-  handle(handlerInput) {
-    const sound = SOUNDS[DEFAULT_SOUND];
+  async handle(handlerInput) {
+    const attrs = await handlerInput.attributesManager.getPersistentAttributes();
+    const offset = attrs.offsetMs || 0;
+    await handlerInput.attributesManager.savePersistentAttributes();
     return handlerInput.responseBuilder
-      .speak(`Tocando ${sound.label}. Boa noite!`)
-      .addAudioPlayerPlayDirective('REPLACE_ALL', audioUrl(sound.file), DEFAULT_SOUND, 0)
+      .speak(`Tocando ${SOUND_LABEL}. Boa noite!`)
+      .addAudioPlayerPlayDirective('REPLACE_ALL', AUDIO_URL, SOUND_TOKEN, offset)
       .getResponse();
   },
 };
@@ -65,12 +50,13 @@ const PlaySoundIntentHandler = {
       Alexa.getIntentName(handlerInput.requestEnvelope) === 'PlaySoundIntent'
     );
   },
-  handle(handlerInput) {
-    // Versão 1.0: sem slot — sempre toca o som padrão
-    const sound = SOUNDS[DEFAULT_SOUND];
+  async handle(handlerInput) {
+    const attrs = { currentSound: SOUND_TOKEN, offsetMs: 0, loop: true };
+    handlerInput.attributesManager.setPersistentAttributes(attrs);
+    await handlerInput.attributesManager.savePersistentAttributes();
     return handlerInput.responseBuilder
-      .speak(`Tocando ${sound.label}.`)
-      .addAudioPlayerPlayDirective('REPLACE_ALL', audioUrl(sound.file), DEFAULT_SOUND, 0)
+      .speak(`Tocando ${SOUND_LABEL}.`)
+      .addAudioPlayerPlayDirective('REPLACE_ALL', AUDIO_URL, SOUND_TOKEN, 0)
       .getResponse();
   },
 };
@@ -82,7 +68,13 @@ const PauseIntentHandler = {
       Alexa.getIntentName(handlerInput.requestEnvelope) === 'AMAZON.PauseIntent'
     );
   },
-  handle(handlerInput) {
+  async handle(handlerInput) {
+    const offset =
+      handlerInput.requestEnvelope.context.AudioPlayer?.offsetInMilliseconds || 0;
+    const attrs = await handlerInput.attributesManager.getPersistentAttributes();
+    attrs.offsetMs = offset;
+    handlerInput.attributesManager.setPersistentAttributes(attrs);
+    await handlerInput.attributesManager.savePersistentAttributes();
     return handlerInput.responseBuilder
       .addAudioPlayerStopDirective()
       .getResponse();
@@ -96,10 +88,11 @@ const ResumeIntentHandler = {
       Alexa.getIntentName(handlerInput.requestEnvelope) === 'AMAZON.ResumeIntent'
     );
   },
-  handle(handlerInput) {
-    const sound = SOUNDS[DEFAULT_SOUND];
+  async handle(handlerInput) {
+    const attrs = await handlerInput.attributesManager.getPersistentAttributes();
+    const offset = attrs.offsetMs || 0;
     return handlerInput.responseBuilder
-      .addAudioPlayerPlayDirective('REPLACE_ALL', audioUrl(sound.file), DEFAULT_SOUND, 0)
+      .addAudioPlayerPlayDirective('REPLACE_ALL', AUDIO_URL, SOUND_TOKEN, offset)
       .getResponse();
   },
 };
@@ -129,10 +122,8 @@ const PlaybackNearlyFinishedHandler = {
     );
   },
   handle(handlerInput) {
-    const token = handlerInput.requestEnvelope.request.token || DEFAULT_SOUND;
-    const sound = SOUNDS[token] || SOUNDS[DEFAULT_SOUND];
     return handlerInput.responseBuilder
-      .addAudioPlayerPlayDirective('ENQUEUE', audioUrl(sound.file), token, 0, token)
+      .addAudioPlayerPlayDirective('ENQUEUE', AUDIO_URL, SOUND_TOKEN, 0, SOUND_TOKEN)
       .getResponse();
   },
 };
@@ -155,7 +146,7 @@ const HelpIntentHandler = {
   },
   handle(handlerInput) {
     return handlerInput.responseBuilder
-      .speak('Diga "toque chuva", "toque ventilador" ou simplesmente abra a skill para ouvir a nave espacial.')
+      .speak('Diga "toque a nave do buda" ou simplesmente abra a skill para começar.')
       .getResponse();
   },
 };
@@ -165,7 +156,7 @@ const ErrorHandler = {
   handle(handlerInput, error) {
     console.error('Erro:', error.message);
     return handlerInput.responseBuilder
-      .speak('Ops, algo deu errado. Tente novamente.')
+      .speak('Algo deu errado. Tente novamente.')
       .getResponse();
   },
 };
@@ -183,4 +174,5 @@ exports.handler = Alexa.SkillBuilders.custom()
     HelpIntentHandler,
   )
   .addErrorHandlers(ErrorHandler)
+  .withPersistenceAdapter(persistenceAdapter)
   .lambda();
