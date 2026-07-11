@@ -1,0 +1,13 @@
+{
+  "name": "barulheira-pra-dormir",
+  "version": "2.0.0",
+  "description": "Alexa skill de sons ambiente para dormir — mercado brasileiro",
+  "main": "index.js",
+  "engines": {
+    "node": ">=20.x"
+  },
+  "dependencies": {
+    "ask-sdk-core": "^2.14.0",
+    "ask-sdk-dynamodb-persistence-adapter": "^2.14.0"
+  }
+}
