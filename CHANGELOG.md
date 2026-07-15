@@ -62,3 +62,34 @@ Formato: [Semver simplificado] · data · descrição
   no Brasil em 01/07/2026.
 - TAM estimado: 15M usuários Alexa MAU no Brasil.
 - Stack para custo zero: Lambda + R2 + DynamoDB (todos free tier).
+
+---
+
+## [3.0.0] — julho 2026 · Refinamento do MVP (7 Sons Curados)
+
+### O que mudou
+- **Catálogo reduzido de 25 para 7 sons**: removidos 18 sons que não passaram
+  no critério de qualidade subjetiva para dormir.
+- **Sons mantidos**: cachoeira, om, ondas-do-mar, ruido-branco, ruido-rosa,
+  submerso, tigela-tibetana.
+- **Sons removidos**: ar-condicionado, aviao, batimento-cardiaco, chuva,
+  chuva-forte, espaco-profundo, floresta-noturna, grilos, lareira, nave-do-buda,
+  nave-espacial, riacho, ruido-marrom, secador, tempestade, trem, ventilador, vento.
+- **DEFAULT_SOUND_ID**: `chuva` → `cachoeira`.
+- **R2 limpo**: 18 arquivos de áudio deletados do bucket.
+- **ListSoundsIntent com fluxo de 2 etapas**: welcome curto → usuário pede
+  "lista completa" → Alexa lista as 7 opções por categoria.
+- **Categorias**: Natureza (cachoeira, ondas-do-mar), Relaxamento (om,
+  tigela-tibetana, submerso), Ruídos (ruido-branco, ruido-rosa).
+- **R2_BASE hardcoded**: revertido para URL direta (sem env var) para simplificar.
+- **ZIP de deploy corrigido**: recriado do zero com `npm install` limpo para
+  garantir `node_modules/` na raiz (sem prefixo `lambda/`).
+
+### Decisões técnicas aprendidas
+- ZIP do Lambda deve ser criado com `cd <dir> && zip -r out.zip .` — nunca
+  `zip -r out.zip <dir>/` de fora, pois isso nesta a estrutura e causa
+  `Runtime.ImportModuleError: Cannot find module 'index'`.
+- Solução mais robusta: criar diretório fresh + `npm install` + zip, em vez de
+  baixar o ZIP existente do Lambda e reutilizá-lo.
+- Slot `samples` dentro da definição do slot (e não do intent) causa erro
+  "not supported in a skill without a dialog model" no build do modelo Alexa.
